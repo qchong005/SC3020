@@ -28,7 +28,7 @@ void loadCSVData(const string& data_file, Disk& disk) {
         string val;    // to hold each field value temporarily
         Record rec;
 
-        // read each row until tab, then store the value in val based on order of fields
+        // read each row until tab or whitespace, then store the value in val based on order of fields
         // not based on order of storage
         getline(ss, val, '\t');    
         rec.date = dateToInt(val);  // parse date
