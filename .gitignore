@@ -46,8 +46,7 @@
 bin/
 
 # Data files (adjust as needed)
-/data/disk.bin
-data/disk.bin
+*/data/disk.bin
 
 # VSCode settings folder
 .vscode/
