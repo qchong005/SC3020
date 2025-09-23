@@ -55,15 +55,17 @@ g++.exe (Rev8, Built by MSYS2 project) 15.2.0
 
 ---
 
-##  Building the Project
+## Building the Project
 
-From the project root (`dbms_task1`), run:
+From the project root (`Project1`), run:
 
 ```bash
-g++ -std=c++17 src/main.cc src/disk.cc src/buffer.cc src/loader.cc -Iinclude -o dbms.exe
+g++ -std=c++17 src/main.cpp src/disk.cpp src/buffer.cpp src/loader.cpp -Iinclude -o bin/dbms.exe
 ```
 
-This creates an executable: **`dbms.exe`**
+This will compile the project and create an executable: `**dbms.exe**` inside the `bin/` folder.
+
+- Note: The `bin/` directory and all its contents (like `dbms.exe`) are ignored by Git via `.gitignore`.
 
 ---
 
