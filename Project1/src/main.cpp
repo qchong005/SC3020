@@ -6,6 +6,17 @@
 
 size_t load_tsv_into_heap(const std::string& path, HeapFile& heap);
 
+
+void clear_disk(const std::string& disk_path) {
+    std::ofstream ofs(disk_path, std::ios::binary | std::ios::trunc);
+    if (!ofs.is_open()) {
+        throw std::runtime_error("Failed to clear disk file");
+    }
+    // Writing nothing truncates the file to size 0
+    ofs.close();
+}
+
+
 int main(int argc, char** argv) {
     try {
         if (argc < 3) {
@@ -16,6 +27,7 @@ int main(int argc, char** argv) {
         std::string tsv = argv[1];
         std::string disk = argv[2];
 
+        clear_disk(disk);
         DiskManager dm(disk);
         Buffer buf(&dm);
         HeapFile heap(&buf);
