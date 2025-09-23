@@ -57,8 +57,7 @@ void loadCSVData(const string& data_file, Disk& disk) {
         getline(ss, val, '\t');
         rec.home_team_wins = (val == "1");
 
-        block.records[block.num_records] = rec;   // add record to block
-        block.num_records++;
+        block.records[block.num_records++] = rec;   // add record to block
 
         if (isBlockFull(block, MAX_RECORDS_PER_BLOCK)) {
             disk.writeBlock(block);         // write block to disk
