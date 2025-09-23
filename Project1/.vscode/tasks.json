@@ -1,0 +1,22 @@
+{
+    "version": "2.0.0",
+    "tasks": [
+        {
+            "label": "Build dbms (MinGW)",
+            "type": "shell",
+            "command": "g++",
+            "args": [
+                "-std=c++17",
+                "src/main.cc",
+                "src/disk.cc",
+                "src/buffer.cc",
+                "src/loader.cc",
+                "-Iinclude",
+                "-o",
+                "dbms.exe"
+            ],
+            "group": { "kind": "build", "isDefault": true },
+            "problemMatcher": ["$gcc"]
+        }
+    ]
+}

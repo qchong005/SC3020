@@ -1,0 +1,49 @@
+# Compiled object files, libraries, executables
+*.o
+*.obj
+*.so
+*.dll
+*.exe
+*.out
+*.app
+
+# Build directories
+/build/
+/bin/
+
+# Data files (adjust if you want to track some)
+/data/
+
+# VSCode settings folder
+.vscode/
+
+# Python virtual environment
+.venv/
+
+# Backup and temporary files
+*.log
+*.tmp
+*.bak
+*~
+*.swp
+
+# OS generated files
+.DS_Store
+Thumbs.db
+
+# CMake files
+CMakeFiles/
+CMakeCache.txt
+cmake_install.cmake
+Makefile
+install_manifest.txt
+
+# Other IDE/editor files
+*.idea/
+
+# Mac system files
+.AppleDouble
+.LSOverride
+
+# Windows image file caches
+ehthumbs.db
