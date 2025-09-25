@@ -1,8 +1,8 @@
+#include "block.h"
 #include "constants.h"
 #include "disk.h"
 #include "record.h"
 #include "utils.h"
-#include "block.h"
 #include <cstddef>
 #include <cstdint>
 #include <cstring>
@@ -109,41 +109,12 @@ bool Disk::writeToDisk(const std::vector<Record> &records)
     return true;
 }
 
-// void Disk::writeBlock(const Block &block)
-// {
-//     if (!file.is_open())
-//     {
-//         cerr << "File not open for writing." << endl;
-//         return;
-//     }
-//
-//     file.seekp(0, ios::end);                                           // Move to end of file
-//     file.write(reinterpret_cast<const char *>(&block), sizeof(Block)); // Write the block
-//     file.flush(); // flush the buffer to make sure data is written to disk
-// }
-//
-// Block Disk::readBlock(size_t index)
-// {
-//     if (!file.is_open())
-//     {
-//         cerr << "File not open for reading." << endl;
-//         return Block(); // Return empty block
-//     }
-//
-//     file.seekg(0, ios::end);
-//     int file_size = file.tellg(); // Get current file size
-//     if (index * sizeof(Block) >= file_size)
-//     {
-//         cerr << "Out of range" << endl;
-//         return Block(); // Return empty block
-//     }
-//
-//     file.seekg(index * sizeof(Block), ios::beg); // Move file pointer to the start of the block to read
-//
-//     Block block;
-//     file.read(reinterpret_cast<char *>(&block), sizeof(Block)); // Read the block
-//     return block;
-// }
+void printStats()
+{
+    std::cout << "Size of Record: " << sizeof(Record) << " bytes" << endl;
+    std::cout << "Total No. of Records: " << ttlRecs << '\n';
+    std::cout << "Total No. of Blocks: " << ttlBlks << '\n';
+}
 
 int Disk::getTtlBlks() const
 {
@@ -160,7 +131,8 @@ std::vector<std::pair<float, RecordRef>> Disk::getAllFTPctHomeValues() const
     std::vector<std::pair<float, RecordRef>> ft_pct_values;
     ft_pct_values.reserve(records.size());
 
-    for (std::size_t i = 0; i < records.size(); i++) {
+    for (std::size_t i = 0; i < records.size(); i++)
+    {
         // Calculate block and record position
         std::uint32_t block_id = static_cast<std::uint32_t>(i / MAX_RECORDS_PER_BLOCK);
         std::uint16_t record_offset = static_cast<std::uint16_t>(i % MAX_RECORDS_PER_BLOCK);

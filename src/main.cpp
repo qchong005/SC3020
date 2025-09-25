@@ -1,19 +1,14 @@
+#include "bplus_tree.h"
 #include "constants.h"
 #include "disk.h"
 #include "utils.h"
-#include "bplus_tree.h"
 #include <chrono>
 #include <iostream>
-
-using namespace std;
 
 void task1(const Disk &disk)
 {
     std::cout << "=== Task 1 ===" << '\n';
-    std::cout << "Size of Record: " << sizeof(Record) << " bytes" << endl;
-    std::cout << "Total No of Records: " << disk.getTtlRecs() << endl;
-    std::cout << "Total No of Blocks: " << disk.getTtlBlks() << endl;
-    std::cout << endl;
+    disk.printStats();
 }
 
 void task2(const Disk &disk)
