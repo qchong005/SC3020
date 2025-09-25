@@ -59,7 +59,7 @@ void loadCSVData(const string& data_file, Disk& disk) {
 
         block.records[block.num_records++] = rec;   // add record to block
 
-        if (isBlockFull(block, MAX_RECORDS_PER_BLOCK)) {
+        if (isBlockFull(block)) {
             disk.writeBlock(block);         // write block to disk
             resetBlockNumRecords(block);    // reset num_records to 0 for next block
         }

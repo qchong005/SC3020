@@ -20,3 +20,4 @@ struct Record {
 
 
 uint32_t dateToInt(const string& s);    // Expect format "DD/MM/YYYY" and convert to YYYYMMDD as int
+string intToDate(uint32_t date_int);    // Convert YYYYMMDD as int back to "DD/MM/YYYY"
