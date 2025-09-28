@@ -1,0 +1,1 @@
+- Block Size: 4096Bytes --> Each index block will be 4096B

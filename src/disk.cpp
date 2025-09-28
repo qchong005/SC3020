@@ -109,9 +109,9 @@ bool Disk::writeToDisk(const std::vector<Record> &records)
     return true;
 }
 
-void printStats()
+void Disk::printStats() const
 {
-    std::cout << "Size of Record: " << sizeof(Record) << " bytes" << endl;
+    std::cout << "Size of Record: " << sizeof(Record) << " bytes" << std::endl;
     std::cout << "Total No. of Records: " << ttlRecs << '\n';
     std::cout << "Total No. of Blocks: " << ttlBlks << '\n';
 }
@@ -142,4 +142,46 @@ std::vector<std::pair<float, RecordRef>> Disk::getAllFTPctHomeValues() const
     }
 
     return ft_pct_values;
+}
+
+Record Disk::getRecord(const RecordRef& ref) const
+{
+    // Method 1: Read from memory (if records are loaded)
+    if (!records.empty()) {
+        std::size_t record_index = ref.block_id * MAX_RECORDS_PER_BLOCK + ref.record_offset;
+        if (record_index < records.size()) {
+            return records[record_index];
+        }
+    }
+
+    // Method 2: Read from disk file (if records not in memory)
+    std::ifstream dbFile(filename, std::ios::binary);
+    if (!dbFile.is_open()) {
+        std::cerr << "Cannot open database file: " << filename << '\n';
+        return Record{}; // Return empty record on error
+    }
+
+    // Calculate file position
+    std::size_t block_offset = ref.block_id * BLOCK_SIZE;
+    std::size_t record_position = block_offset + (ref.record_offset * RECORD_SIZE);
+
+    // Seek to record position and read
+    dbFile.seekg(record_position);
+    Record record;
+    dbFile.read(reinterpret_cast<char*>(&record), RECORD_SIZE);
+    dbFile.close();
+
+    return record;
+}
+
+std::vector<Record> Disk::getRecords(const std::vector<RecordRef>& refs) const
+{
+    std::vector<Record> result;
+    result.reserve(refs.size());
+
+    for (const auto& ref : refs) {
+        result.push_back(getRecord(ref));
+    }
+
+    return result;
 }

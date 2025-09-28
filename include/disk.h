@@ -30,5 +30,11 @@ class Disk
     // Method to get all FT_PCT_home values with their record references for indexing
     std::vector<std::pair<float, RecordRef>> getAllFTPctHomeValues() const;
 
-    void printStats();
+    // Method to retrieve a record using RecordRef (block_id + record_offset)
+    Record getRecord(const RecordRef& ref) const;
+
+    // Method to retrieve multiple records using RecordRefs
+    std::vector<Record> getRecords(const std::vector<RecordRef>& refs) const;
+
+    void printStats() const;
 };

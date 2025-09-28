@@ -1,0 +1,136 @@
+#pragma once
+
+#include "constants.h"
+#include <cstdint>
+#include <fstream>
+#include <memory>
+#include <unordered_map>
+#include <vector>
+
+// Record reference for indexing (points to location in main database)
+struct RecordRef
+{
+    std::uint32_t block_id;
+    std::uint16_t record_offset;
+
+    RecordRef() : block_id(0), record_offset(0)
+    {
+    }
+    RecordRef(std::uint32_t bid, std::uint16_t offset) : block_id(bid), record_offset(offset)
+    {
+    }
+
+    // Comparison operators for sorting
+    bool operator<(const RecordRef &other) const
+    {
+        if (block_id != other.block_id)
+        {
+            return block_id < other.block_id;
+        }
+        return record_offset < other.record_offset;
+    }
+
+    bool operator==(const RecordRef &other) const
+    {
+        return block_id == other.block_id && record_offset == other.record_offset;
+    }
+};
+
+// B+ tree node types
+enum class NodeType
+{
+    INTERNAL,
+    LEAF
+};
+
+// B+ tree node structure
+struct BPlusTreeNode
+{
+    NodeType type;
+    std::uint32_t node_id;
+    std::uint16_t num_keys;
+    bool is_root;
+
+    // Keys array - FT_PCT_home values
+    std::vector<float> keys;
+
+    // For internal nodes: pointers to child nodes
+    std::vector<std::uint32_t> children;
+
+    // For leaf nodes: record references and values for duplicate keys
+    std::vector<std::vector<RecordRef>> values;
+
+    // For leaf nodes: pointer to next leaf (linked list)
+    std::uint32_t next_leaf;
+
+    BPlusTreeNode(NodeType t, std::uint32_t id) : type(t), node_id(id), num_keys(0), is_root(false), next_leaf(0)
+    {
+    }
+};
+
+using NodePtr = std::shared_ptr<BPlusTreeNode>;
+
+// B+ tree class
+class BPlusTree
+{
+  private:
+    NodePtr root;
+    int n; // Parameter n (max keys per node)
+    std::string index_filename;
+    std::uint32_t next_node_id;
+
+    // Statistics
+    int total_nodes;
+    int tree_levels;
+
+    // Node storage for in-memory B+ tree
+    std::unordered_map<std::uint32_t, NodePtr> nodes;
+
+    // Helper functions
+    NodePtr createNode(NodeType type);
+    NodePtr findLeafNode(float key);
+    void insertIntoLeaf(NodePtr leaf, float key, const RecordRef &record_ref);
+    void insertIntoParent(NodePtr left, float key, NodePtr right);
+    NodePtr splitLeafNode(NodePtr leaf);
+    NodePtr splitInternalNode(NodePtr node, int child_index);
+
+    // Tree statistics calculation
+    void calculateStatistics();
+    int calculateLevels(NodePtr node, int current_level = 1);
+    void countNodes(NodePtr node, int &count);
+
+    // Disk I/O helpers
+    void saveNodeToDisk(std::ofstream &file, NodePtr node);
+    void loadNodeFromDisk(std::ifstream &file, uint32_t node_id);
+
+  public:
+    BPlusTree(int order = 4, const std::string &filename = "bplus_tree.idx");
+    ~BPlusTree() = default;
+
+    // Core operations
+    void insert(float key, const RecordRef &record_ref);
+    void bulkLoad(std::vector<std::pair<float, RecordRef>> &data);
+    std::vector<RecordRef> search(float key);
+
+    // Statistics accessors
+    int getParameterN() const
+    {
+        return n;
+    }
+    int getTotalNodes() const
+    {
+        return total_nodes;
+    }
+    int getTreeLevels() const
+    {
+        return tree_levels;
+    }
+    std::vector<float> getRootKeys() const;
+
+    // Disk operations
+    void saveToDisk();
+    void loadFromDisk();
+
+    // Utility
+    void printStatistics();
+};
