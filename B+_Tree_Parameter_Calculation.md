@@ -1,20 +1,23 @@
 # B+ Tree Parameter n Calculation Documentation
 
 ## Overview
+
 This document explains how to calculate the optimal parameter `n` for the B+ tree indexing component based on the Task 1 storage statistics and block size constraints.
 
 ## Input Data from Task 1
+
 - **Total Records**: 26,651
 - **Record Size**: 22 bytes
 - **Total Blocks**: 144
 - **Block Size**: 4,096 bytes (specified in Task 2 requirements)
-- **Estimated Unique FT_PCT_home Values**: ~350 (observed from initial tree output)
+- Unique FT_PCT_HOME_VALUES: 26266
 
 ## Calculation Methodology
 
 ### 1. Node Structure Analysis
 
 #### Leaf Node Components:
+
 - **Node Header**:
   - NodeType (enum): 4 bytes
   - node_id (uint32_t): 4 bytes
@@ -29,6 +32,7 @@ This document explains how to calculate the optimal parameter `n` for the B+ tre
   - Vector overhead: ~8 bytes
 
 #### Internal Node Components:
+
 - **Node Header**: 11 bytes (same as leaf minus next_leaf)
 - **Per Key Entry**:
   - Key (float): 4 bytes
@@ -46,6 +50,7 @@ Average Records per Key = Total Records / Unique Keys
 ### 3. Storage Space Calculations
 
 #### Leaf Node Space Usage:
+
 ```
 Available Space = Block Size - Node Header
                 = 4,096 - 15 = 4,081 bytes
@@ -59,6 +64,7 @@ Maximum Keys per Leaf = Available Space / Per Key Storage
 ```
 
 #### Internal Node Space Usage:
+
 ```
 Available Space = 4,096 - 11 = 4,085 bytes
 
@@ -73,16 +79,17 @@ Given the constraint that leaf nodes can only hold ~8 keys due to large RecordRe
 
 #### Tree Height Analysis for Different n Values:
 
-| Parameter n | Tree Levels | Approximate Nodes | Structure Quality |
-|-------------|-------------|-------------------|-------------------|
-| n = 8       | 4-5 levels  | ~150 nodes       | Optimal for block utilization |
-| n = 15      | 3-4 levels  | ~80 nodes        | Good balance |
-| n = 25      | 3 levels    | ~50 nodes        | Balanced approach |
-| n = 50      | 2-3 levels  | ~25 nodes        | Fewer levels, larger nodes |
+| Parameter n | Tree Levels | Approximate Nodes | Structure Quality             |
+| ----------- | ----------- | ----------------- | ----------------------------- |
+| n = 8       | 4-5 levels  | ~150 nodes        | Optimal for block utilization |
+| n = 15      | 3-4 levels  | ~80 nodes         | Good balance                  |
+| n = 25      | 3 levels    | ~50 nodes         | Balanced approach             |
+| n = 50      | 2-3 levels  | ~25 nodes         | Fewer levels, larger nodes    |
 
 ### 5. Recommended Parameter Values
 
 #### Primary Recommendation: **n = 25**
+
 - **Rationale**:
   - Creates 3-level tree structure (good for demonstration)
   - Approximately 50 nodes total
@@ -91,6 +98,7 @@ Given the constraint that leaf nodes can only hold ~8 keys due to large RecordRe
   - Provides meaningful B+ tree structure for evaluation
 
 #### Alternative Options:
+
 - **n = 15**: More conservative, creates 4-level tree with ~80 nodes
 - **n = 8**: Maximum block utilization, but may create deeper tree
 
@@ -125,3 +133,4 @@ if (order <= 0) {
 4. Confirm all keys are properly indexed and searchable
 
 This approach ensures the B+ tree demonstrates proper hierarchical structure while respecting block size constraints and efficiently organizing the NBA game data.
+
