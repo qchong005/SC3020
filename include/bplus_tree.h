@@ -86,13 +86,13 @@ class BPlusTree
     // Node storage for in-memory B+ tree
     std::unordered_map<std::uint32_t, NodePtr> nodes;
 
-    // Helper functions
+    // Node functions
     NodePtr createNode(NodeType type);
     NodePtr findLeafNode(float key);
     void insertIntoLeaf(NodePtr leaf, float key, const RecordRef &record_ref);
     void insertIntoParent(NodePtr left, float key, NodePtr right);
     NodePtr splitLeafNode(NodePtr leaf);
-    NodePtr splitInternalNode(NodePtr node, int child_index);
+    NodePtr splitInternalNode(NodePtr node, float &promote_key);
 
     // Tree statistics calculation
     void calculateStatistics();
@@ -102,7 +102,7 @@ class BPlusTree
     // Disk I/O helpers
     void saveNodeToDisk(std::ofstream &file, NodePtr node);
     void loadNodeFromDisk(std::ifstream &file, uint32_t node_id);
-
+    
   public:
     BPlusTree(int order = 4, const std::string &filename = "bplus_tree.idx");
     ~BPlusTree() = default;
@@ -111,8 +111,9 @@ class BPlusTree
     void insert(float key, const RecordRef &record_ref);
     void bulkLoad(std::vector<std::pair<float, RecordRef>> &data);
     std::vector<RecordRef> search(float key);
-    std::vector<RecordRef> rangeSearch(float threshold,int &index_nodes_accessed, double *avg_key = nullptr, int *out_count = nullptr);
+    std::vector<RecordRef> rangeSearch(float threshold,int &index_nodes_accessed, double *avg_key = nullptr, int *out_count = nullptr, int *out_unique_keys = nullptr);
     void rebuildTreeFromData(std::vector<std::pair<float, RecordRef>> &data);
+    bool findParent(uint32_t child_id, NodePtr& out_parent, int& out_child_idx);
 
     // Statistics accessors
     int getParameterN() const

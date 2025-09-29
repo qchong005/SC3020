@@ -35,7 +35,7 @@ NodePtr BPlusTree::createNode(NodeType type) {
     return node;
 }
 
-void BPlusTree::insert(float key, const RecordRef& record_ref) {
+/* void BPlusTree::insert(float key, const RecordRef& record_ref) {
     if (!root) {
         // Create root as leaf node
         root = createNode(NodeType::LEAF);
@@ -65,6 +65,28 @@ void BPlusTree::insert(float key, const RecordRef& record_ref) {
         } else {
             insertIntoParent(leaf, new_leaf->keys[0], new_leaf);
         }
+    }
+}*/
+
+void BPlusTree::insert(float key, const RecordRef& record_ref) {
+    // Empty tree: make a leaf root
+    if (!root) {
+        root = createNode(NodeType::LEAF);
+        root->is_root = true;
+        // first key/bucket
+        insertIntoLeaf(root, key, record_ref);
+        return;
+    }
+
+    // 1) Find target leaf and insert (append to bucket if duplicate key)
+    NodePtr leaf = findLeafNode(key);
+    insertIntoLeaf(leaf, key, record_ref);
+
+    // 2) Split leaf if it overflowed (use leafMaxKeys, not n)
+    if (leaf->num_keys > 8) {
+        NodePtr right_leaf = splitLeafNode(leaf);                 // left keeps lower half
+        // Promote the separator = first key of right leaf
+        insertIntoParent(leaf, right_leaf->keys[0], right_leaf);  // handles root/non-root & parent splits
     }
 }
 
@@ -112,7 +134,7 @@ void BPlusTree::insertIntoLeaf(NodePtr leaf, float key, const RecordRef& record_
     }
 }
 
-NodePtr BPlusTree::splitLeafNode(NodePtr leaf) {
+/* NodePtr BPlusTree::splitLeafNode(NodePtr leaf) {
     NodePtr new_leaf = createNode(NodeType::LEAF);
 
     int mid = (leaf->num_keys + 1) / 2;
@@ -135,9 +157,38 @@ NodePtr BPlusTree::splitLeafNode(NodePtr leaf) {
     leaf->next_leaf = new_leaf->node_id;
 
     return new_leaf;
+}*/
+
+NodePtr BPlusTree::splitLeafNode(NodePtr left) {
+    NodePtr right = createNode(NodeType::LEAF);
+
+    const int L = left->num_keys;
+    const int mid = L / 2;  // left keeps [0..mid-1], right gets [mid..L-1]
+
+    // Build right leaf by moving the upper half
+    right->num_keys = L - mid;
+    right->keys.assign(left->keys.begin() + mid, left->keys.begin() + L);
+    right->values.assign(
+        std::make_move_iterator(left->values.begin() + mid),
+        std::make_move_iterator(left->values.begin() + L)
+    );
+
+    // Shrink left leaf to its lower half
+    left->num_keys = mid;
+    left->keys.resize(mid);
+    left->values.resize(mid);
+
+    // Fix leaf chain
+    right->next_leaf = left->next_leaf;
+    left->next_leaf  = right->node_id;
+
+    // If createNode() doesn’t already register the node, ensure it's in the map:
+    // nodes[right->node_id] = right; total_nodes = (int)nodes.size();
+
+    return right;  // caller MUST do: insertIntoParent(left, right->keys[0], right);
 }
 
-NodePtr BPlusTree::splitInternalNode(NodePtr node, int child_index) {
+/*NodePtr BPlusTree::splitInternalNode(NodePtr node, int child_index) {
     NodePtr new_node = createNode(NodeType::INTERNAL);
 
     int mid = node->num_keys / 2;
@@ -160,9 +211,38 @@ NodePtr BPlusTree::splitInternalNode(NodePtr node, int child_index) {
     node->num_keys = mid;
 
     return new_node;
+}*/
+
+NodePtr BPlusTree::splitInternalNode(NodePtr node, float& promote_key) {
+    // node is an INTERNAL that currently overflowed (num_keys > n)
+    NodePtr new_node = createNode(NodeType::INTERNAL);
+
+    const int K   = node->num_keys;
+    const int mid = K / 2;                 // promote node->keys[mid]
+
+    promote_key = node->keys[mid];
+
+    // new_node gets keys (mid+1 .. K-1)
+    new_node->keys.assign(node->keys.begin() + mid + 1, node->keys.begin() + K);
+
+    // new_node gets children (mid+1 .. K)
+    new_node->children.assign(node->children.begin() + mid + 1, node->children.end());
+
+    new_node->num_keys = static_cast<std::uint16_t>(new_node->keys.size());
+
+    // node keeps keys (0 .. mid-1) and children (0 .. mid)
+    node->keys.resize(mid);
+    node->children.resize(mid + 1);
+    node->num_keys = static_cast<std::uint16_t>(mid);
+
+    // Note: if you maintain parent maps elsewhere, re-parent moved children here.
+    // for (int i = 0; i < (int)new_node->children.size(); ++i) setParent(new_node->node_id, new_node->children[i], i);
+    // for (int i = 0; i < (int)node->children.size(); ++i)     setParent(node->node_id,     node->children[i], i);
+
+    return new_node;
 }
 
-void BPlusTree::insertIntoParent(NodePtr left, float key, NodePtr right) {
+/* void BPlusTree::insertIntoParent(NodePtr left, float key, NodePtr right) {
     // Find parent of left node
     NodePtr parent = nullptr;
 
@@ -182,8 +262,93 @@ void BPlusTree::insertIntoParent(NodePtr left, float key, NodePtr right) {
 
     // In a full implementation, we would traverse from root to find the parent
     // For now, this is simplified
-}
+} */
 
+void BPlusTree::insertIntoParent(NodePtr left, float sep_key, NodePtr right) {
+    // Case A: left is root → make a new root with [left,right]
+    if (left->is_root || left.get() == root.get()) {
+        NodePtr new_root = createNode(NodeType::INTERNAL);
+        new_root->is_root = true;
+        new_root->keys.clear();
+        new_root->children.clear();
+
+        new_root->keys.push_back(sep_key);
+        new_root->children.push_back(left->node_id);
+        new_root->children.push_back(right->node_id);
+        new_root->num_keys = 1;
+
+        // Old root is no longer root
+        if (left->is_root) left->is_root = false;
+        if (root && root.get() == left.get()) root->is_root = false;
+
+        root = new_root;
+        nodes[new_root->node_id] = new_root;
+
+        // update stats lazily; calculateStatistics() will refresh later
+        return;
+    }
+
+    // Case B: normal parent — locate it
+    NodePtr parent; int li = -1;
+    if (!findParent(left->node_id, parent, li) || !parent) {
+        // Fallback: if we truly cannot find parent, promote to new root (defensive)
+        NodePtr new_root = createNode(NodeType::INTERNAL);
+        new_root->is_root = true;
+        new_root->keys.push_back(sep_key);
+        new_root->children.push_back(left->node_id);
+        new_root->children.push_back(right->node_id);
+        new_root->num_keys = 1;
+        root = new_root;
+        nodes[new_root->node_id] = new_root;
+        return;
+    }
+
+    // Insert separator to the right of 'left'
+    parent->keys.insert(parent->keys.begin() + li, sep_key);
+    parent->children.insert(parent->children.begin() + li + 1, right->node_id);
+    parent->num_keys++;
+
+    // If parent fits, we are done
+    if (parent->num_keys <= n) return;
+
+    // Parent overflow: split internal and push promoted key upward
+    // We'll implement the split inline (stable and clear).
+    NodePtr L = parent;
+    NodePtr R = createNode(NodeType::INTERNAL);
+
+    int K = L->num_keys;
+    int mid = K / 2;                 // promote L->keys[mid]
+    float up_key = L->keys[mid];
+
+    // R gets keys (mid+1..K-1) and children (mid+1..K)
+    R->keys.assign(L->keys.begin() + mid + 1, L->keys.begin() + K);
+    R->children.assign(L->children.begin() + mid + 1, L->children.end());
+    R->num_keys = (int)R->keys.size();
+
+    // L keeps keys (0..mid-1) and children (0..mid)
+    L->keys.resize(mid);
+    L->children.resize(mid + 1);
+    L->num_keys = mid;
+
+    nodes[R->node_id] = R;
+
+    // If L was root, create a new root
+    if (L.get() == root.get() || L->is_root) {
+        NodePtr new_root = createNode(NodeType::INTERNAL);
+        new_root->is_root = true;
+        new_root->keys = { up_key };
+        new_root->children = { L->node_id, R->node_id };
+        new_root->num_keys = 1;
+        if (root) root->is_root = false;
+        root = new_root;
+        nodes[new_root->node_id] = new_root;
+        return;
+    }
+
+    // Otherwise, insert promoted key between L and R into L's parent (recurse)
+    insertIntoParent(L, up_key, R);
+}
+ 
 void BPlusTree::bulkLoad(std::vector<std::pair<float, RecordRef>>& data) {
     // Sort data by key
     std::sort(data.begin(), data.end());
@@ -213,9 +378,10 @@ std::vector<RecordRef> BPlusTree::search(float key) {
     return {};
 }
 
-std::vector<RecordRef> BPlusTree::rangeSearch(float threshold, int &index_nodes_accessed, double *avg_key, int *out_count)
+std::vector<RecordRef> BPlusTree::rangeSearch(float threshold, int &index_nodes_accessed, double *avg_key, int *out_count, int *out_unique_keys)
 {
     index_nodes_accessed = 0;
+    int unique_keys = 0;
     std::vector<RecordRef> out;
     if (!root) return out;
 
@@ -244,6 +410,8 @@ std::vector<RecordRef> BPlusTree::rangeSearch(float threshold, int &index_nodes_
     while (leaf) {
         for (int i = 0; i < leaf->num_keys; ++i) {
             if (leaf->keys[i] > threshold) {
+                ++unique_keys;
+
                 // Accumulate average purely from index keys (each key repeats for its refs)
                 if (avg_key) {
                     sum_keys += static_cast<double>(leaf->keys[i]) * leaf->values[i].size();
@@ -261,6 +429,7 @@ std::vector<RecordRef> BPlusTree::rangeSearch(float threshold, int &index_nodes_
 
     if (avg_key) *avg_key = (cnt_keys ? (sum_keys / static_cast<double>(cnt_keys)) : 0.0);
     if (out_count) *out_count = out.size(); // returns number of records found in range search
+    if (out_unique_keys) *out_unique_keys = unique_keys;  // returns number of unique keys found in range search
     return out;
 }
 
@@ -528,4 +697,31 @@ void BPlusTree::loadNodeFromDisk(std::ifstream &file, uint32_t expected_node_id)
         // Store this node
         nodes[node_id] = node;
     }
+}
+
+bool BPlusTree::findParent(uint32_t child_id, NodePtr& out_parent, int& out_child_idx) {
+    out_parent = nullptr;
+    out_child_idx = -1;
+    if (!root || root->type == NodeType::LEAF) return false;
+    // BFS/DFS; tree is small, DFS is fine.
+    std::vector<NodePtr> stack{root};
+    while (!stack.empty()) {
+        NodePtr cur = stack.back(); stack.pop_back();
+        if (!cur || cur->type != NodeType::INTERNAL) continue;
+
+        // Scan this internal's children for a direct hit
+        for (int i = 0; i < (int)cur->children.size(); ++i) {
+            if (cur->children[i] == child_id) {
+                out_parent = cur;
+                out_child_idx = i;
+                return true;
+            }
+        }
+        // Descend
+        for (auto cid : cur->children) {
+            auto it = nodes.find(cid);
+            if (it != nodes.end()) stack.push_back(it->second);
+        }
+    }
+    return false;
 }

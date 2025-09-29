@@ -21,7 +21,7 @@ void task2(const Disk &disk)
     auto start = std::chrono::high_resolution_clock::now();
 
     // Create B+ tree with optimal order (n=400) or auto-calculate
-    BPlusTree bplus_tree(0, "ft_pct_home.idx");  // 0 = auto-calculate optimal order
+    BPlusTree bplus_tree(0, "data/ft_pct_home.idx");  // 0 = auto-calculate optimal order
 
     // Try to load existing index first
     bplus_tree.loadFromDisk();
@@ -204,31 +204,21 @@ void task3(Disk &disk)
     std::cout << "=== Task 3 ===\n";
     const float THRESH = 0.9f;
 
-    // Duplicate original data.db to a new file for safe deletion operations
+    // Duplicate original data.db for safe deletion operations
     const std::string duplicate_path = "data/task3_data.db";
     Disk duplicate_disk = disk.createDuplicate(duplicate_path);
 
-    // Print stats of the duplicate DB before deletions (No corruption found)
-    // std::cout << "\nInitial Duplicated Database Stats:\n";
-    // duplicate_disk.printStats();
-
     // Load existing index from disk (no initial data scan)
-    BPlusTree bplus_tree(0, "ft_pct_home.idx");
+    BPlusTree bplus_tree(0, "data/ft_pct_home.idx");
     bplus_tree.loadFromDisk();
-
-    // If index missing (unlikely at this point), build it once
-    if (bplus_tree.getTotalNodes() == 0) {
-        auto pairs = disk.getAllFTPctHomeValues();
-        bplus_tree.bulkLoad(pairs);
-        bplus_tree.saveToDisk();
-    }
 
     // Index-based range search for FT_PCT_home > THRESH
     int idx_nodes = 0;
     double avg_from_index = 0.0;
     int range_count = 0;
+    int unique_keys = 0;
     auto t1 = std::chrono::high_resolution_clock::now();
-    auto refs = bplus_tree.rangeSearch(THRESH, idx_nodes, &avg_from_index, &range_count);
+    auto refs = bplus_tree.rangeSearch(THRESH, idx_nodes, &avg_from_index, &range_count, &unique_keys);
     auto t2 = std::chrono::high_resolution_clock::now();
     auto idx_ms = std::chrono::duration_cast<std::chrono::milliseconds>(t2 - t1).count();
 
@@ -245,22 +235,24 @@ void task3(Disk &disk)
     auto del_ms = std::chrono::duration_cast<std::chrono::milliseconds>(t4 - t3).count();
 
     // Print stats of the duplicate DB after deletions
-    //std::cout << "\nPost-Deletion Database Stats:\n";
+    // std::cout << "\nPost-Deletion Database Stats:\n";
     // duplicate_disk.printStats();
 
-    // Build a new index file for the duplicate DB
+    // Rebuild B+ tree index from scratch on the updated duplicate DB (Wrong implementation)
     const std::string new_index_path = "data/ft_pct_home_task3.idx";
     BPlusTree bplus_tree_new(0, new_index_path);      
     auto rebuilt_pairs = duplicate_disk.getAllFTPctHomeValues(); 
     bplus_tree_new.rebuildTreeFromData(rebuilt_pairs);           
-    bplus_tree_new.saveToDisk();                                   
+    bplus_tree_new.saveToDisk();   
     
+    // Report results
     std::cout << "\n=== Task 3 Results ===\n";
     std::cout << "Filter: FT_PCT_home > " << THRESH << "\n";
 
     std::cout << "Index-based Range Search\n";
     std::cout << "Index nodes accessed: " << idx_nodes << "\n";
     std::cout << "Records returned by index range search: " << range_count << "\n";
+    std::cout << "Unique keys returned: " << unique_keys << "\n";
     std::cout << "Running time (retrieval): " << idx_ms << " ms\n";
     std::cout << "Average FT_PCT_home of returned records (from index keys): " << avg_from_index << "\n\n";
 
