@@ -4,6 +4,7 @@
 #include <iostream>
 #include <sstream>
 #include <string>
+#include <fstream>
 
 bool isLeapYear(const int year)
 {
@@ -74,4 +75,22 @@ std::string intToDate_2Byte(std::uint16_t days_since_epoch)
        << '/' << year;
 
     return ss.str();
+}
+
+
+bool duplicateFile(const std::string& src, const std::string& dst) {
+    std::ifstream in(src, std::ios::binary);
+    if (!in) {
+        std::cerr << "Error: cannot open source file for duplication: " << src << "\n";
+        return false;
+    }
+
+    std::ofstream out(dst, std::ios::binary | std::ios::trunc);
+    if (!out) {
+        std::cerr << "Error: cannot open destination file for duplication: " << dst << "\n";
+        return false;
+    }
+
+    out << in.rdbuf();
+    return out.good();
 }

@@ -86,13 +86,32 @@ class BPlusTree
     // Node storage for in-memory B+ tree
     std::unordered_map<std::uint32_t, NodePtr> nodes;
 
-    // Node functions
+    // Insertion Node functions
     NodePtr createNode(NodeType type);
     NodePtr findLeafNode(float key);
     void insertIntoLeaf(NodePtr leaf, float key, const RecordRef &record_ref);
     void insertIntoParent(NodePtr left, float key, NodePtr right);
     NodePtr splitLeafNode(NodePtr leaf);
     NodePtr splitInternalNode(NodePtr node, float &promote_key);
+
+    // Deletion Node Functions
+    // --- Parent maps (child -> parent, and child's index in parent) ---
+    std::unordered_map<std::uint32_t, std::uint32_t> parent_of;
+    std::unordered_map<std::uint32_t, int>           child_idx;
+
+    inline void setParent(std::uint32_t parent, std::uint32_t child, int ix) {
+        parent_of[child] = parent; child_idx[child] = ix;
+    }
+
+    // --- Capacities (tune leafMaxKeys() to your project’s leaf capacity) ---
+    int leafMaxKeys() const { return 8; } // if you compute this, call your calculator instead
+    int leafMinKeys() const { return std::max(1, (leafMaxKeys()+1)/2); }
+    int internalMinKeys() const { return std::max(1, (n+1)/2); }
+
+    // --- Deletion helpers ---
+    void updateParentSeparatorFor(NodePtr leaf);
+    void rebalanceAfterDeleteLeaf(NodePtr leaf);
+    void rebalanceInternal(NodePtr internal);
 
     // Tree statistics calculation
     void calculateStatistics();
@@ -114,6 +133,12 @@ class BPlusTree
     std::vector<RecordRef> rangeSearch(float threshold,int &index_nodes_accessed, double *avg_key = nullptr, int *out_count = nullptr, int *out_unique_keys = nullptr);
     void rebuildTreeFromData(std::vector<std::pair<float, RecordRef>> &data);
     bool findParent(uint32_t child_id, NodePtr& out_parent, int& out_child_idx);
+
+    // Delete operations
+    bool deleteRecord(float key, const RecordRef& ref); // Delete exactly one occurrence of (key, ref). Drops key if bucket becomes empty.
+    bool deleteKeyCompletely(float key); // Remove an entire key (all refs for that key). (Optional convenience)
+    std::size_t deleteByRefs(const std::vector<std::pair<float, std::vector<RecordRef>>>& refs_by_key); // Batch delete grouped by key; returns count of RecordRef removed.
+    void buildParentMaps(); // Parent map rebuild (call after load/build or big structural edits) 
 
     // Statistics accessors
     int getParameterN() const

@@ -2,6 +2,7 @@
 #include <iostream>
 #include <algorithm>
 #include <cstring>
+#include <functional> //Task 3 Deletion
 
 BPlusTree::BPlusTree(int order, const std::string& filename)
     : root(nullptr), index_filename(filename), next_node_id(1),
@@ -724,4 +725,301 @@ bool BPlusTree::findParent(uint32_t child_id, NodePtr& out_parent, int& out_chil
         }
     }
     return false;
+}
+
+void BPlusTree::buildParentMaps() {
+    parent_of.clear(); child_idx.clear();
+    if (!root) return;
+
+    std::function<void(NodePtr)> dfs = [&](NodePtr p){
+        if (!p || p->type == NodeType::LEAF) return;
+        for (int i = 0; i < (int)p->children.size(); ++i) {
+            auto it = nodes.find(p->children[i]);
+            if (it == nodes.end()) continue;
+            setParent(p->node_id, it->first, i);
+            dfs(it->second);
+        }
+    };
+    dfs(root);
+}
+
+void BPlusTree::updateParentSeparatorFor(NodePtr leaf) {
+    if (!leaf || !root || leaf.get() == root.get()) return;
+    auto pit = parent_of.find(leaf->node_id);
+    if (pit == parent_of.end()) return;
+
+    NodePtr parent = nodes[pit->second];
+    if (!parent || parent->type != NodeType::INTERNAL) return;
+
+    int idx = child_idx[leaf->node_id];
+    if (idx > 0 && leaf->num_keys > 0 && (idx-1) < (int)parent->keys.size()) {
+        parent->keys[idx-1] = leaf->keys[0];
+    }
+}
+
+bool BPlusTree::deleteRecord(float key, const RecordRef& ref) {
+    if (!root) return false;
+
+    NodePtr leaf = findLeafNode(key);
+    if (!leaf || leaf->type != NodeType::LEAF) return false;
+
+    int pos = int(std::lower_bound(leaf->keys.begin(), leaf->keys.begin()+leaf->num_keys, key)
+                  - leaf->keys.begin());
+    if (pos >= leaf->num_keys || leaf->keys[pos] != key) return false;
+
+    auto &bucket = leaf->values[pos];
+    auto it = std::find(bucket.begin(), bucket.end(), ref);
+    if (it == bucket.end()) return false;
+
+    bucket.erase(it);
+
+    if (bucket.empty()) {
+        // remove the key slot
+        for (int i = pos; i+1 < leaf->num_keys; ++i) {
+            leaf->keys[i]   = leaf->keys[i+1];
+            leaf->values[i] = std::move(leaf->values[i+1]);
+        }
+        leaf->num_keys--;
+        leaf->keys.resize(leaf->num_keys);
+        leaf->values.resize(leaf->num_keys);
+
+        rebalanceAfterDeleteLeaf(leaf);
+    } else {
+        if (pos == 0) updateParentSeparatorFor(leaf);
+    }
+    return true;
+}
+
+
+bool BPlusTree::deleteKeyCompletely(float key) {
+    if (!root) return false;
+
+    NodePtr leaf = findLeafNode(key);
+    if (!leaf || leaf->type != NodeType::LEAF) return false;
+
+    int pos = int(std::lower_bound(leaf->keys.begin(), leaf->keys.begin()+leaf->num_keys, key)
+                  - leaf->keys.begin());
+    if (pos >= leaf->num_keys || leaf->keys[pos] != key) return false;
+
+    for (int i = pos; i+1 < leaf->num_keys; ++i) {
+        leaf->keys[i]   = leaf->keys[i+1];
+        leaf->values[i] = std::move(leaf->values[i+1]);
+    }
+    leaf->num_keys--;
+    leaf->keys.resize(leaf->num_keys);
+    leaf->values.resize(leaf->num_keys);
+
+    rebalanceAfterDeleteLeaf(leaf);
+    return true;
+}
+
+
+std::size_t BPlusTree::deleteByRefs(const std::vector<std::pair<float, std::vector<RecordRef>>>& refs_by_key) {
+    std::size_t removed = 0;
+    for (const auto& kv : refs_by_key) {
+        float key = kv.first;
+        const auto& refs = kv.second;
+        for (const auto& r : refs) {
+            if (deleteRecord(key, r)) ++removed;
+        }
+    }
+    return removed;
+}
+
+
+void BPlusTree::rebalanceAfterDeleteLeaf(NodePtr leaf) {
+    if (!leaf) return;
+
+    // Single-node tree?
+    if (leaf.get() == root.get()) {
+        if (leaf->num_keys == 0) {
+            nodes.clear(); root = nullptr; total_nodes = 0; tree_levels = 0;
+        }
+        return;
+    }
+
+    const int minK = leafMinKeys();
+    if (leaf->num_keys >= minK) { updateParentSeparatorFor(leaf); return; }
+
+    // Identify parent and siblings
+    uint32_t pid = parent_of[leaf->node_id];
+    NodePtr parent = nodes[pid];
+    int idx = child_idx[leaf->node_id];
+
+    NodePtr leftSib  = (idx > 0) ? nodes[parent->children[idx-1]] : nullptr;
+    NodePtr rightSib = (idx+1 < (int)parent->children.size()) ? nodes[parent->children[idx+1]] : nullptr;
+
+    // Borrow from left
+    if (leftSib && leftSib->type == NodeType::LEAF && leftSib->num_keys > minK) {
+        leaf->keys.insert(leaf->keys.begin(), leftSib->keys[leftSib->num_keys-1]);
+        leaf->values.insert(leaf->values.begin(), std::move(leftSib->values[leftSib->num_keys-1]));
+        leaf->num_keys++;
+        leftSib->num_keys--;
+        leftSib->keys.resize(leftSib->num_keys);
+        leftSib->values.resize(leftSib->num_keys);
+        parent->keys[idx-1] = leaf->keys[0];   // update separator
+        return;
+    }
+
+    // Borrow from right
+    if (rightSib && rightSib->type == NodeType::LEAF && rightSib->num_keys > minK) {
+        leaf->keys.push_back(rightSib->keys[0]);
+        leaf->values.push_back(std::move(rightSib->values[0]));
+        leaf->num_keys++;
+        for (int i = 0; i+1 < rightSib->num_keys; ++i) {
+            rightSib->keys[i]   = rightSib->keys[i+1];
+            rightSib->values[i] = std::move(rightSib->values[i+1]);
+        }
+        rightSib->num_keys--;
+        rightSib->keys.resize(rightSib->num_keys);
+        rightSib->values.resize(rightSib->num_keys);
+        if (rightSib->num_keys > 0) parent->keys[idx] = rightSib->keys[0];
+        return;
+    }
+
+    // Merge: prefer merging leaf into left sibling if possible; otherwise into right
+    auto mergeIntoLeft = [&]() -> bool {
+        if (!leftSib || leftSib->type != NodeType::LEAF) return false;
+        leftSib->keys.insert(leftSib->keys.end(), leaf->keys.begin(), leaf->keys.end());
+        leftSib->values.insert(leftSib->values.end(),
+                               std::make_move_iterator(leaf->values.begin()),
+                               std::make_move_iterator(leaf->values.end()));
+        leftSib->num_keys += leaf->num_keys;
+        leftSib->next_leaf = leaf->next_leaf;
+
+        parent->children.erase(parent->children.begin()+idx);
+        if (idx-1 >= 0 && idx-1 < parent->num_keys) {
+            for (int i = idx-1; i+1 < parent->num_keys; ++i) parent->keys[i] = parent->keys[i+1];
+            parent->num_keys--;
+            parent->keys.resize(parent->num_keys);
+        }
+        nodes.erase(leaf->node_id);
+        total_nodes = (int)nodes.size();
+        return true;
+    };
+
+    auto mergeIntoRight = [&]() -> bool {
+        if (!rightSib || rightSib->type != NodeType::LEAF) return false;
+        rightSib->keys.insert(rightSib->keys.begin(), leaf->keys.begin(), leaf->keys.end());
+        rightSib->values.insert(rightSib->values.begin(),
+                                std::make_move_iterator(leaf->values.begin()),
+                                std::make_move_iterator(leaf->values.end()));
+        rightSib->num_keys += leaf->num_keys;
+
+        parent->children.erase(parent->children.begin()+idx);
+        if (idx < parent->num_keys) {
+            for (int i = idx; i+1 < parent->num_keys; ++i) parent->keys[i] = parent->keys[i+1];
+            parent->num_keys--;
+            parent->keys.resize(parent->num_keys);
+        }
+        nodes.erase(leaf->node_id);
+        total_nodes = (int)nodes.size();
+
+        if (idx < parent->num_keys && rightSib->num_keys > 0) parent->keys[idx] = rightSib->keys[0];
+        return true;
+    };
+
+    bool merged = mergeIntoLeft() || mergeIntoRight();
+
+    // Root shrink / parent fixups
+    if (parent.get() == root.get()) {
+        if (parent->children.size() == 1) {
+            root = nodes[parent->children[0]];
+            nodes.erase(parent->node_id);
+            total_nodes = (int)nodes.size();
+            tree_levels = std::max(0, tree_levels - 1);
+        }
+        buildParentMaps();
+        return;
+    }
+
+    if (merged && parent->num_keys < internalMinKeys()) {
+        rebalanceInternal(parent);
+    } else {
+        buildParentMaps(); // child indices changed
+    }
+}
+
+
+void BPlusTree::rebalanceInternal(NodePtr node) {
+    if (!node || node.get() == root.get()) return;
+
+    const int minK = internalMinKeys();
+    if (node->num_keys >= minK) return;
+
+    uint32_t pid = parent_of[node->node_id];
+    NodePtr parent = nodes[pid];
+    int idx = child_idx[node->node_id];
+
+    NodePtr leftSib  = (idx > 0) ? nodes[parent->children[idx-1]] : nullptr;
+    NodePtr rightSib = (idx+1 < (int)parent->children.size()) ? nodes[parent->children[idx+1]] : nullptr;
+
+    // Borrow from left
+    if (leftSib && leftSib->type == NodeType::INTERNAL && leftSib->num_keys > minK) {
+        node->keys.insert(node->keys.begin(), parent->keys[idx-1]); node->num_keys++;
+        node->children.insert(node->children.begin(), leftSib->children.back());
+        leftSib->children.pop_back();
+
+        parent->keys[idx-1] = leftSib->keys.back();
+        leftSib->keys.pop_back(); leftSib->num_keys--;
+
+        buildParentMaps();
+        return;
+    }
+
+    // Borrow from right
+    if (rightSib && rightSib->type == NodeType::INTERNAL && rightSib->num_keys > minK) {
+        node->keys.push_back(parent->keys[idx]); node->num_keys++;
+        node->children.push_back(rightSib->children.front());
+        rightSib->children.erase(rightSib->children.begin());
+
+        parent->keys[idx] = rightSib->keys.front();
+        rightSib->keys.erase(rightSib->keys.begin()); rightSib->num_keys--;
+
+        buildParentMaps();
+        return;
+    }
+
+    // Merge (prefer merge into left if available)
+    if (leftSib && leftSib->type == NodeType::INTERNAL) {
+        leftSib->keys.push_back(parent->keys[idx-1]); leftSib->num_keys++;
+        leftSib->keys.insert(leftSib->keys.end(), node->keys.begin(), node->keys.end());
+        leftSib->num_keys += node->num_keys;
+        leftSib->children.insert(leftSib->children.end(), node->children.begin(), node->children.end());
+
+        parent->children.erase(parent->children.begin()+idx);
+        for (int i = idx-1; i+1 < parent->num_keys; ++i) parent->keys[i] = parent->keys[i+1];
+        parent->num_keys--; parent->keys.resize(parent->num_keys);
+
+        nodes.erase(node->node_id); total_nodes = (int)nodes.size();
+    } else if (rightSib && rightSib->type == NodeType::INTERNAL) {
+        node->keys.push_back(parent->keys[idx]); node->num_keys++;
+        node->keys.insert(node->keys.end(), rightSib->keys.begin(), rightSib->keys.end());
+        node->num_keys += rightSib->num_keys;
+        node->children.insert(node->children.end(), rightSib->children.begin(), rightSib->children.end());
+
+        parent->children.erase(parent->children.begin()+idx+1);
+        for (int i = idx; i+1 < parent->num_keys; ++i) parent->keys[i] = parent->keys[i+1];
+        parent->num_keys--; parent->keys.resize(parent->num_keys);
+
+        nodes.erase(rightSib->node_id); total_nodes = (int)nodes.size();
+    }
+
+    // Fix root if parent became unary
+    if (parent.get() == root.get()) {
+        if (parent->children.size() == 1) {
+            root = nodes[parent->children[0]];
+            nodes.erase(parent->node_id);
+            total_nodes = (int)nodes.size();
+            tree_levels = std::max(0, tree_levels - 1);
+        }
+        buildParentMaps();
+        return;
+    }
+
+    if (parent->num_keys < internalMinKeys()) {
+        rebalanceInternal(parent);
+    } else {
+        buildParentMaps();
+    }
 }
