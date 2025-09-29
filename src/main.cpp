@@ -4,6 +4,8 @@
 #include "utils.h"
 #include <chrono>
 #include <iostream>
+#include <tuple> //Task 3
+#include <unordered_set> //Task 3
 
 void task1(const Disk &disk)
 {
@@ -197,6 +199,87 @@ void demonstrateIndexRetrieval(const Disk& disk, BPlusTree& bplus_tree)
     std::cout << std::endl;
 }
 
+void task3(Disk &disk)
+{
+    std::cout << "=== Task 3 ===\n";
+    const float THRESH = 0.9f;
+
+    // Duplicate original data.db to a new file for safe deletion operations
+    const std::string duplicate_path = "data/task3_data.db";
+    Disk duplicate_disk = disk.createDuplicate(duplicate_path);
+
+    // Print stats of the duplicate DB before deletions (No corruption found)
+    // std::cout << "\nInitial Duplicated Database Stats:\n";
+    // duplicate_disk.printStats();
+
+    // Load existing index from disk (no initial data scan)
+    BPlusTree bplus_tree(0, "ft_pct_home.idx");
+    bplus_tree.loadFromDisk();
+
+    // If index missing (unlikely at this point), build it once
+    if (bplus_tree.getTotalNodes() == 0) {
+        auto pairs = disk.getAllFTPctHomeValues();
+        bplus_tree.bulkLoad(pairs);
+        bplus_tree.saveToDisk();
+    }
+
+    // Index-based range search for FT_PCT_home > THRESH
+    int idx_nodes = 0;
+    double avg_from_index = 0.0;
+    int range_count = 0;
+    auto t1 = std::chrono::high_resolution_clock::now();
+    auto refs = bplus_tree.rangeSearch(THRESH, idx_nodes, &avg_from_index, &range_count);
+    auto t2 = std::chrono::high_resolution_clock::now();
+    auto idx_ms = std::chrono::duration_cast<std::chrono::milliseconds>(t2 - t1).count();
+
+    // Brute-force range search for comparison
+    auto bf_start = std::chrono::high_resolution_clock::now();
+    auto [bf_matches, bf_blocks] = duplicate_disk.bruteForceRangeSearch(THRESH);
+    auto bf_end = std::chrono::high_resolution_clock::now();
+    auto bf_ms = std::chrono::duration_cast<std::chrono::milliseconds>(bf_end - bf_start).count();
+
+    // Apply deletions to duplicate DB file using RecordRefs from index search
+    auto t3 = std::chrono::high_resolution_clock::now();
+    auto [deleted_count, data_blocks_accessed, avg_ft_deleted] = duplicate_disk.deleteRecordsByRefs(refs);
+    auto t4 = std::chrono::high_resolution_clock::now();
+    auto del_ms = std::chrono::duration_cast<std::chrono::milliseconds>(t4 - t3).count();
+
+    // Print stats of the duplicate DB after deletions
+    //std::cout << "\nPost-Deletion Database Stats:\n";
+    // duplicate_disk.printStats();
+
+    // Build a new index file for the duplicate DB
+    const std::string new_index_path = "data/ft_pct_home_task3.idx";
+    BPlusTree bplus_tree_new(0, new_index_path);      
+    auto rebuilt_pairs = duplicate_disk.getAllFTPctHomeValues(); 
+    bplus_tree_new.rebuildTreeFromData(rebuilt_pairs);           
+    bplus_tree_new.saveToDisk();                                   
+    
+    std::cout << "\n=== Task 3 Results ===\n";
+    std::cout << "Filter: FT_PCT_home > " << THRESH << "\n";
+
+    std::cout << "Index-based Range Search\n";
+    std::cout << "Index nodes accessed: " << idx_nodes << "\n";
+    std::cout << "Records returned by index range search: " << range_count << "\n";
+    std::cout << "Running time (retrieval): " << idx_ms << " ms\n";
+    std::cout << "Average FT_PCT_home of returned records (from index keys): " << avg_from_index << "\n\n";
+
+    std::cout << "Deletion\n";
+    std::cout << "Data blocks accessed (during deletions): " << data_blocks_accessed << "\n";
+    std::cout << "Games deleted: " << deleted_count << "\n";
+    std::cout << "Average FT_PCT_home of deleted records (from data): " << avg_ft_deleted << "\n";
+    std::cout << "Deletion/Rewrite running time: " << del_ms << " ms\n\n";
+
+    std::cout << "Brute-force Range Search\n";
+    std::cout << "Data blocks that would be scanned: " << bf_blocks << "\n";
+    std::cout << "Records found: " << bf_matches << "\n";
+    std::cout << "Running time (brute-force scan): " << bf_ms << " ms\n\n";
+
+    std::cout << "Updated B+ Tree Statistics after deletion:\n";
+    bplus_tree_new.printStatistics();
+}
+
+
 int main()
 {
     Disk disk("data/data.db");
@@ -210,9 +293,11 @@ int main()
     task2(disk);
 
     // Demonstrate index-based data retrieval
-    BPlusTree demo_tree(25, "ft_pct_home.idx");
-    demo_tree.loadFromDisk();
-    demonstrateIndexRetrieval(disk, demo_tree);
+    //BPlusTree demo_tree(25, "ft_pct_home.idx");
+    //demo_tree.loadFromDisk();
+    //demonstrateIndexRetrieval(disk, demo_tree);
+
+    task3(disk);
 
     // Block block;
     //

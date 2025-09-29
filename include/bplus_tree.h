@@ -111,6 +111,8 @@ class BPlusTree
     void insert(float key, const RecordRef &record_ref);
     void bulkLoad(std::vector<std::pair<float, RecordRef>> &data);
     std::vector<RecordRef> search(float key);
+    std::vector<RecordRef> rangeSearch(float threshold,int &index_nodes_accessed, double *avg_key = nullptr, int *out_count = nullptr);
+    void rebuildTreeFromData(std::vector<std::pair<float, RecordRef>> &data);
 
     // Statistics accessors
     int getParameterN() const

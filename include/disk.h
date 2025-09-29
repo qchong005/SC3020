@@ -36,5 +36,14 @@ class Disk
     // Method to retrieve multiple records using RecordRefs
     std::vector<Record> getRecords(const std::vector<RecordRef>& refs) const;
 
+    // Duplicate data.db whenever there is an insertion/deletion to keep the original data.db intact 
+    Disk createDuplicate(const std::string& out_filename) const;
+
+    // Method to delete records by RecordRefs; returns (deleted_count, data_blocks_accessed, avg_ft_deleted)
+    std::tuple<int,int,double> deleteRecordsByRefs(const std::vector<RecordRef> &refs);
+
+    // Brute-force scan for records with FT_PCT_home above a threshold (for comparison)
+    std::pair<std::size_t,int> bruteForceRangeSearch(float threshold) const;
+
     void printStats() const;
 };

@@ -213,6 +213,70 @@ std::vector<RecordRef> BPlusTree::search(float key) {
     return {};
 }
 
+std::vector<RecordRef> BPlusTree::rangeSearch(float threshold, int &index_nodes_accessed, double *avg_key, int *out_count)
+{
+    index_nodes_accessed = 0;
+    std::vector<RecordRef> out;
+    if (!root) return out;
+
+    // Descend to the leaf where "threshold" would land; count internal nodes
+    NodePtr cur = root;
+    while (cur && cur->type == NodeType::INTERNAL) {
+        index_nodes_accessed++;
+        int i = 0;
+        while (i < cur->num_keys && threshold >= cur->keys[i]) i++;
+        if (i < (int)cur->children.size()) {
+            auto it = nodes.find(cur->children[i]);
+            if (it == nodes.end()) break;
+            cur = it->second;
+        } else break;
+    }
+    if (!cur) return out;
+
+    // Count the first leaf
+    index_nodes_accessed++;
+
+    // Walk right along the leaf chain, collecting > threshold
+    double sum_keys = 0.0;
+    size_t cnt_keys = 0;
+
+    auto leaf = cur;
+    while (leaf) {
+        for (int i = 0; i < leaf->num_keys; ++i) {
+            if (leaf->keys[i] > threshold) {
+                // Accumulate average purely from index keys (each key repeats for its refs)
+                if (avg_key) {
+                    sum_keys += static_cast<double>(leaf->keys[i]) * leaf->values[i].size();
+                    cnt_keys += leaf->values[i].size();
+                }
+                out.insert(out.end(), leaf->values[i].begin(), leaf->values[i].end());
+            }
+        }
+        if (leaf->next_leaf == 0) break;
+        auto it = nodes.find(leaf->next_leaf);
+        if (it == nodes.end()) break;
+        leaf = it->second;
+        index_nodes_accessed++; // visited another leaf
+    }
+
+    if (avg_key) *avg_key = (cnt_keys ? (sum_keys / static_cast<double>(cnt_keys)) : 0.0);
+    if (out_count) *out_count = out.size(); // returns number of records found in range search
+    return out;
+}
+
+void BPlusTree::rebuildTreeFromData(std::vector<std::pair<float, RecordRef>> &data)
+{
+    // Reset in-memory state
+    nodes.clear();
+    root = nullptr;
+    next_node_id = 1;
+    total_nodes = 0;
+    tree_levels = 0;
+
+    // Rebuild bottom-up with existing bulk loader (which sorts & inserts)
+    bulkLoad(data);
+}
+
 std::vector<float> BPlusTree::getRootKeys() const {
     if (!root) return {};
 
