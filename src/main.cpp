@@ -51,7 +51,8 @@ void task2(const Disk &disk)
         std::cout << "Retrieved " << ft_pct_data.size() << " records for indexing" << std::endl;
 
         // Build the B+ tree using bulk loading
-        bplus_tree.bulkLoad(ft_pct_data);
+        // bplus_tree.bulkLoad(ft_pct_data);
+        bplus_tree.bulkLoadBottomUp(ft_pct_data);
 
         // Save B+ tree to disk
         bplus_tree.saveToDisk();
@@ -249,7 +250,7 @@ void task3(Disk &disk)
     auto bf_ms = std::chrono::duration_cast<std::chrono::milliseconds>(bf_end - bf_start).count();
 
 
-    // BEFORE touching the DB, group refs by their actual key (for index deletion) ---
+    // BEFORE touching the DB, group refs by their actual key (for index deletion) 
     auto grouped = groupRefsByKey(duplicate_disk, refs);
 
     auto t_del_start = std::chrono::high_resolution_clock::now();
@@ -257,7 +258,7 @@ void task3(Disk &disk)
     auto t_del_end = std::chrono::high_resolution_clock::now();
     auto del_ms = std::chrono::duration_cast<std::chrono::milliseconds>(t_del_end - t_del_start).count();
 
-    // --- Delete from the DUPLICATE INDEX in-place (balanced; NO rebuild) ---
+    // Delete from the DUPLICATE INDEX in-place (balanced; NO rebuild) 
     std::size_t removed_in_index = bplus_tree_duplicate.deleteByRefs(grouped);
     (void)removed_in_index; // optional to print
     bplus_tree_duplicate.saveToDisk();       // persists to data/ft_pct_home_task3.idx

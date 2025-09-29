@@ -2,7 +2,9 @@
 #include <iostream>
 #include <algorithm>
 #include <cstring>
-#include <functional> //Task 3 Deletion
+#include <functional>
+#include <unordered_map>
+#include <vector>
 
 BPlusTree::BPlusTree(int order, const std::string& filename)
     : root(nullptr), index_filename(filename), next_node_id(1),
@@ -85,7 +87,7 @@ void BPlusTree::insert(float key, const RecordRef& record_ref) {
 
     // 2) Split leaf if it overflowed (use leafMaxKeys, not n)
     if (leaf->num_keys > 8) {
-        NodePtr right_leaf = splitLeafNode(leaf);                 // left keeps lower half
+        NodePtr right_leaf = splitLeafNode(leaf);           // left keeps lower half
         // Promote the separator = first key of right leaf
         insertIntoParent(leaf, right_leaf->keys[0], right_leaf);  // handles root/non-root & parent splits
     }
@@ -507,9 +509,20 @@ int BPlusTree::calculateLevels(NodePtr node, int current_level) {
 void BPlusTree::printStatistics() {
     calculateStatistics();
 
+    int leaf_nodes = 0;
+    int internal_nodes = 0;
+    for (const auto& kv : nodes) {
+        const NodePtr& p = kv.second;
+        if (!p) continue;
+        if (p->type == NodeType::LEAF) leaf_nodes++;
+        else internal_nodes++;
+    }
+
     std::cout << "B+ Tree Statistics:" << std::endl;
     std::cout << "Parameter n: " << n << std::endl;
     std::cout << "Number of nodes: " << total_nodes << std::endl;
+    std::cout << "Number of Internal nodes: " << internal_nodes << std::endl;
+    std::cout << "Number of Leaf nodes: " << leaf_nodes << std::endl;
     std::cout << "Number of levels: " << tree_levels << std::endl;
 
     std::cout << "Root node keys: ";
@@ -1022,4 +1035,178 @@ void BPlusTree::rebalanceInternal(NodePtr node) {
     } else {
         buildParentMaps();
     }
+}
+
+
+// new implementation of bulk loading (bottom-up, no splits, fully packed leaves)
+// Return the smallest key in a subtree (first key of the leftmost leaf)
+float BPlusTree::firstKeyOfSubtree(NodePtr node) const {
+    if (!node) return 0.0f;
+    NodePtr cur = node;
+    while (cur && cur->type == NodeType::INTERNAL) {
+        auto it = nodes.find(cur->children.front());
+        if (it == nodes.end()) break;
+        cur = it->second;
+    }
+    // cur should be a leaf now
+    return (cur && cur->num_keys > 0) ? cur->keys[0] : 0.0f;
+}
+
+// Create and return a LEAF node pre-packed with keys and buckets
+NodePtr BPlusTree::makeLeafFromRun(const std::vector<float>& keys_run, const std::vector<std::vector<RecordRef>>& buckets_run)
+{
+    NodePtr leaf = createNode(NodeType::LEAF);
+    leaf->is_root = false;
+    leaf->keys    = keys_run;
+    leaf->values  = buckets_run;
+    leaf->num_keys = static_cast<std::uint16_t>(keys_run.size());
+    leaf->next_leaf = 0;
+    return leaf;
+}
+
+// True bottom-up bulk loader: no dynamic splits, fully packed leaves, clean internal levels
+void BPlusTree::bulkLoadBottomUp(std::vector<std::pair<float, RecordRef>>& data) {
+    // Handle trivial empty input
+    if (data.empty()) {
+        nodes.clear();
+        root.reset();
+        total_nodes = 0;
+        tree_levels = 0;
+        return;
+    }
+
+    // Builds a brand new tree
+    nodes.clear();
+    next_node_id = 1; // optional: reset ids for reproducibility
+    root.reset();
+
+    // Sort by key
+    std::sort(data.begin(), data.end(),
+              [](const auto& a, const auto& b) {
+                  if (a.first != b.first) return a.first < b.first;
+                  // (optional: stable tie-breaker by RecordRef order)
+                  if (a.second.block_id != b.second.block_id) return a.second.block_id < b.second.block_id;
+                  return a.second.record_offset < b.second.record_offset;
+              });
+
+    // Coalesce duplicates into (distinct key -> bucket of RecordRef)
+    std::vector<float> distinct_keys;
+    std::vector<std::vector<RecordRef>> distinct_buckets;
+    distinct_keys.reserve(data.size());
+    distinct_buckets.reserve(data.size());
+
+    {
+        float cur_key = data[0].first;
+        std::vector<RecordRef> cur_bucket;
+        cur_bucket.push_back(data[0].second);
+
+        for (std::size_t i = 1; i < data.size(); ++i) {
+            if (data[i].first == cur_key) {
+                cur_bucket.push_back(data[i].second);
+            } else {
+                distinct_keys.push_back(cur_key);
+                distinct_buckets.emplace_back(std::move(cur_bucket));
+
+                cur_key = data[i].first;
+                cur_bucket.clear();
+                cur_bucket.push_back(data[i].second);
+            }
+        }
+        // flush last
+        distinct_keys.push_back(cur_key);
+        distinct_buckets.emplace_back(std::move(cur_bucket));
+    }
+
+    
+    std::cout << "total pairs=" << data.size() << ", distinct keys=" << distinct_keys.size() << "\n";
+
+
+    // Pack leaves with up to leafMaxKeys() DISTINCT KEYS per leaf
+    const int L = leafMaxKeys(); // your leaf capacity (e.g. 8), not n
+    std::vector<NodePtr> leaves;
+    leaves.reserve((distinct_keys.size() + L - 1) / L);
+
+    std::uint32_t prev_leaf_id = 0;
+    for (std::size_t i = 0; i < distinct_keys.size(); i += L) {
+        std::size_t j = std::min(distinct_keys.size(), i + L);
+
+        std::vector<float> keys_run(distinct_keys.begin() + i, distinct_keys.begin() + j);
+        std::vector<std::vector<RecordRef>> buckets_run(distinct_buckets.begin() + i, distinct_buckets.begin() + j);
+
+        NodePtr leaf = makeLeafFromRun(keys_run, buckets_run);
+
+        // wire leaf chain
+        if (!leaves.empty()) {
+            leaves.back()->next_leaf = leaf->node_id;
+        }
+        leaves.push_back(leaf);
+    }
+
+    // Build internal levels bottom-up
+    // Start from current level = leaves
+    std::vector<NodePtr> curr_level = leaves;
+    const int maxKeys = n;            // internal node capacity (keys)
+    const int maxKids = n + 1;        // internal node capacity (children)
+
+    // Edge-case: only one leaf -> it is the root
+    if (curr_level.size() == 1) {
+        root = curr_level[0];
+        root->is_root = true;
+        calculateStatistics();
+        buildParentMaps();
+        return;
+    }
+
+    while (curr_level.size() > 1) {
+        std::vector<NodePtr> next_level;
+        next_level.reserve((curr_level.size() + maxKids - 1) / maxKids);
+
+        // Take groups of up to maxKids children to form one internal node
+        for (std::size_t i = 0; i < curr_level.size(); i += maxKids) {
+            std::size_t j = std::min(curr_level.size(), i + maxKids);
+
+            NodePtr parent = createNode(NodeType::INTERNAL);
+            parent->is_root = false;
+
+            // children
+            parent->children.reserve(j - i);
+            for (std::size_t c = i; c < j; ++c) {
+                parent->children.push_back(curr_level[c]->node_id);
+            }
+
+            // keys: for child indices 1..k-1, separator = first key of that child subtree
+            parent->keys.reserve(parent->children.size() - 1);
+            for (std::size_t k = 1; k < parent->children.size(); ++k) {
+                auto itChild = nodes.find(parent->children[k]);
+                float sep = 0.0f;
+                if (itChild != nodes.end()) {
+                    sep = firstKeyOfSubtree(itChild->second);
+                }
+                parent->keys.push_back(sep);
+            }
+            parent->num_keys = static_cast<std::uint16_t>(parent->keys.size());
+
+            // parent maps (optional to build here; we'll rebuild at the end anyway)
+            for (int idx = 0; idx < (int)parent->children.size(); ++idx) {
+                setParent(parent->node_id, parent->children[idx], idx);
+            }
+
+            next_level.push_back(parent);
+        }
+
+        curr_level.swap(next_level);
+    }
+
+    // Finalize root
+    root = curr_level[0];
+    root->is_root = true;
+
+    // Stats + parent maps
+    calculateStatistics();
+    buildParentMaps();
+
+    std::cout << "DONE: nodes=" << total_nodes
+              << ", levels=" << tree_levels
+              << ", root id=" << root->node_id
+              << ", root keys=" << root->num_keys << "\n";
 }

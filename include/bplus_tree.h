@@ -103,6 +103,10 @@ class BPlusTree
         parent_of[child] = parent; child_idx[child] = ix;
     }
 
+    float firstKeyOfSubtree(NodePtr node) const; // walk leftmost to leaf and return first key
+    
+    NodePtr makeLeafFromRun(const std::vector<float>& keys_run, const std::vector<std::vector<RecordRef>>& buckets_run);
+
     // --- Capacities (tune leafMaxKeys() to your project’s leaf capacity) ---
     int leafMaxKeys() const { return 8; } // if you compute this, call your calculator instead
     int leafMinKeys() const { return std::max(1, (leafMaxKeys()+1)/2); }
@@ -129,6 +133,7 @@ class BPlusTree
     // Core operations
     void insert(float key, const RecordRef &record_ref);
     void bulkLoad(std::vector<std::pair<float, RecordRef>> &data);
+    void bulkLoadBottomUp(std::vector<std::pair<float, RecordRef>>& data); //make sure that leafnodes are packed
     std::vector<RecordRef> search(float key);
     std::vector<RecordRef> rangeSearch(float threshold,int &index_nodes_accessed, double *avg_key = nullptr, int *out_count = nullptr, int *out_unique_keys = nullptr);
     void rebuildTreeFromData(std::vector<std::pair<float, RecordRef>> &data);
