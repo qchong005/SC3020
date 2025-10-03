@@ -101,6 +101,10 @@ public:
     // Search with statistics tracking
     std::pair<std::vector<RecordRef>, int> searchGreaterThanWithStats(float key);
 
+    // Delete operations
+    bool deleteKey(float key, const RecordRef& record_ref);
+    int deleteGreaterThan(float key);  // Returns number of records deleted
+
     // Statistics
     int getParameterN() const { return n; }
     int getTotalNodes() const { return total_nodes; }

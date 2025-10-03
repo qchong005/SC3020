@@ -6,7 +6,7 @@
 #include <iostream>
 #include <set>
 
-void task3(const Disk &disk);
+void task3(Disk &disk);
 
 void task1(const Disk &disk)
 {
@@ -21,31 +21,25 @@ void task2(const Disk &disk)
 
     auto start = std::chrono::high_resolution_clock::now();
 
-    // Create B+ tree with optimal order n=100 for efficient retrieval
     BPlusTree bplus_tree(100, "ft_pct_home.idx");
 
     // Try to load existing index first
-    bplus_tree.loadFromDisk();
+    // bplus_tree.loadFromDisk();
 
     // If no existing index, build from scratch
-    if (bplus_tree.getTotalNodes() == 0)
-    {
-        std::cout << "Building new B+ tree index..." << std::endl;
+    // if (bplus_tree.getTotalNodes() == 0)
 
-        // Get all FT_PCT_home values with their record references
-        auto ft_pct_data = disk.getAllFTPctHomeValues();
-        std::cout << "Retrieved " << ft_pct_data.size() << " records for indexing" << std::endl;
+    std::cout << "Building new B+ tree index..." << std::endl;
 
-        // Build the B+ tree using bulk loading
-        bplus_tree.bulkLoad(ft_pct_data);
+    // Get all FT_PCT_home values with their record references
+    auto ft_pct_data = disk.getAllFTPctHomeValues();
+    std::cout << "Retrieved " << ft_pct_data.size() << " records for indexing" << std::endl;
 
-        // Save B+ tree to disk
-        bplus_tree.saveToDisk();
-    }
-    else
-    {
-        std::cout << "Loaded existing B+ tree index from disk" << std::endl;
-    }
+    // Build the B+ tree using bulk loading
+    bplus_tree.bulkLoad(ft_pct_data);
+
+    // Save B+ tree to disk
+    bplus_tree.saveToDisk();
 
     auto end = std::chrono::high_resolution_clock::now();
     auto duration = std::chrono::duration_cast<std::chrono::milliseconds>(end - start).count();
@@ -55,69 +49,70 @@ void task2(const Disk &disk)
     // Print statistics
     bplus_tree.printStatistics();
 
-    // Verify RecordRef calculations
-    std::cout << "\n=== Testing RecordRef Accuracy ===" << std::endl;
-    std::cout << "Block size: " << BLOCK_SIZE << " bytes" << std::endl;
-    std::cout << "Record size: " << RECORD_SIZE << " bytes" << std::endl;
-    std::cout << "Records per block: " << MAX_RECORDS_PER_BLOCK << std::endl;
-
-    // Test 1: Check first few records directly
-    std::cout << "\nTest 1: First 3 records from memory vs RecordRef:" << std::endl;
-    auto ft_pct_data = disk.getAllFTPctHomeValues();
-    for (int i = 0; i < 3 && i < ft_pct_data.size(); i++)
-    {
-        float expected_ft_pct = ft_pct_data[i].first;
-        RecordRef ref = ft_pct_data[i].second;
-        Record retrieved = disk.getRecord(ref);
-
-        std::cout << "  Record " << i << ": "
-                  << "Expected FT_PCT=" << expected_ft_pct << ", Retrieved FT_PCT=" << retrieved.ft_pct_home
-                  << ", Block=" << ref.block_id << ", Offset=" << ref.record_offset
-                  << (expected_ft_pct == retrieved.ft_pct_home ? " ✓" : " ✗") << std::endl;
-    }
-
-    // Test 2: Test specific record in different blocks
-    std::cout << "\nTest 2: Records in different blocks:" << std::endl;
-    std::vector<size_t> test_indices = {0, 185, 370, 1000}; // Records in blocks 0, 1, 2, and 5
-    for (size_t idx : test_indices)
-    {
-        if (idx < ft_pct_data.size())
-        {
-            float expected_ft_pct = ft_pct_data[idx].first;
-            RecordRef ref = ft_pct_data[idx].second;
-            Record retrieved = disk.getRecord(ref);
-
-            std::cout << "  Index " << idx << ": "
-                      << "Expected FT_PCT=" << expected_ft_pct << ", Retrieved FT_PCT=" << retrieved.ft_pct_home
-                      << ", Block=" << ref.block_id << ", Offset=" << ref.record_offset
-                      << (expected_ft_pct == retrieved.ft_pct_home ? " ✓" : " ✗") << std::endl;
-        }
-    }
-
-    // Test 3: B+ tree search and retrieval
-    std::cout << "\nTest 3: B+ tree search and RecordRef retrieval:" << std::endl;
-    auto root_keys = bplus_tree.getRootKeys();
-    if (!root_keys.empty())
-    {
-        float test_key = root_keys[0];
-        auto search_results = bplus_tree.search(test_key);
-        std::cout << "Found " << search_results.size() << " records with FT_PCT_home = " << test_key << std::endl;
-
-        if (!search_results.empty())
-        {
-            auto retrieved_records = disk.getRecords(search_results);
-            bool all_correct = true;
-            for (size_t i = 0; i < retrieved_records.size(); i++)
-            {
-                if (retrieved_records[i].ft_pct_home != test_key)
-                {
-                    all_correct = false;
-                    break;
-                }
-            }
-            std::cout << "All retrieved records have correct FT_PCT_home: " << (all_correct ? "✓" : "✗") << std::endl;
-        }
-    }
+    // // Verify RecordRef calculations
+    // std::cout << "\n=== Testing RecordRef Accuracy ===" << std::endl;
+    // std::cout << "Block size: " << BLOCK_SIZE << " bytes" << std::endl;
+    // std::cout << "Record size: " << RECORD_SIZE << " bytes" << std::endl;
+    // std::cout << "Records per block: " << MAX_RECORDS_PER_BLOCK << std::endl;
+    //
+    // // Test 1: Check first few records directly
+    // std::cout << "\nTest 1: First 3 records from memory vs RecordRef:" << std::endl;
+    // auto ft_pct_data = disk.getAllFTPctHomeValues();
+    // for (int i = 0; i < 3 && i < ft_pct_data.size(); i++)
+    // {
+    //     float expected_ft_pct = ft_pct_data[i].first;
+    //     RecordRef ref = ft_pct_data[i].second;
+    //     Record retrieved = disk.getRecord(ref);
+    //
+    //     std::cout << "  Record " << i << ": "
+    //               << "Expected FT_PCT=" << expected_ft_pct << ", Retrieved FT_PCT=" << retrieved.ft_pct_home
+    //               << ", Block=" << ref.block_id << ", Offset=" << ref.record_offset
+    //               << (expected_ft_pct == retrieved.ft_pct_home ? " ✓" : " ✗") << std::endl;
+    // }
+    //
+    // // Test 2: Test specific record in different blocks
+    // std::cout << "\nTest 2: Records in different blocks:" << std::endl;
+    // std::vector<size_t> test_indices = {0, 185, 370, 1000}; // Records in blocks 0, 1, 2, and 5
+    // for (size_t idx : test_indices)
+    // {
+    //     if (idx < ft_pct_data.size())
+    //     {
+    //         float expected_ft_pct = ft_pct_data[idx].first;
+    //         RecordRef ref = ft_pct_data[idx].second;
+    //         Record retrieved = disk.getRecord(ref);
+    //
+    //         std::cout << "  Index " << idx << ": "
+    //                   << "Expected FT_PCT=" << expected_ft_pct << ", Retrieved FT_PCT=" << retrieved.ft_pct_home
+    //                   << ", Block=" << ref.block_id << ", Offset=" << ref.record_offset
+    //                   << (expected_ft_pct == retrieved.ft_pct_home ? " ✓" : " ✗") << std::endl;
+    //     }
+    // }
+    //
+    // // Test 3: B+ tree search and retrieval
+    // std::cout << "\nTest 3: B+ tree search and RecordRef retrieval:" << std::endl;
+    // auto root_keys = bplus_tree.getRootKeys();
+    // if (!root_keys.empty())
+    // {
+    //     float test_key = root_keys[0];
+    //     auto search_results = bplus_tree.search(test_key);
+    //     std::cout << "Found " << search_results.size() << " records with FT_PCT_home = " << test_key << std::endl;
+    //
+    //     if (!search_results.empty())
+    //     {
+    //         auto retrieved_records = disk.getRecords(search_results);
+    //         bool all_correct = true;
+    //         for (size_t i = 0; i < retrieved_records.size(); i++)
+    //         {
+    //             if (retrieved_records[i].ft_pct_home != test_key)
+    //             {
+    //                 all_correct = false;
+    //                 break;
+    //             }
+    //         }
+    //         std::cout << "All retrieved records have correct FT_PCT_home: " << (all_correct ? "✓" : "✗") <<
+    //         std::endl;
+    //     }
+    // }
     std::cout << std::endl;
 }
 
@@ -215,7 +210,7 @@ void demonstrateIndexRetrieval(const Disk &disk, BPlusTree &bplus_tree)
     std::cout << std::endl;
 }
 
-void task3(const Disk &disk)
+void task3(Disk &disk)
 {
     std::cout << "\n=== Task 3: Delete records with FT_PCT_home > 0.9 ===" << std::endl;
 
@@ -223,9 +218,12 @@ void task3(const Disk &disk)
     BPlusTree bplus_tree(100, "ft_pct_home.idx");
     bplus_tree.loadFromDisk();
 
+    std::cout << "\n--- B+ Tree Statistics BEFORE Deletion ---" << std::endl;
+    bplus_tree.printStatistics();
+
     auto start = std::chrono::high_resolution_clock::now();
 
-    std::cout << "Step 1: Using B+ tree index to find records with FT_PCT_home > 0.9..." << std::endl;
+    std::cout << "\nStep 1: Using B+ tree index to find records with FT_PCT_home > 0.9..." << std::endl;
 
     // Use B+ tree to find records with FT_PCT_home > 0.9 and count nodes accessed
     auto [record_refs, index_nodes_accessed] = bplus_tree.searchGreaterThanWithStats(0.9f);
@@ -256,13 +254,13 @@ void task3(const Disk &disk)
 
     // Retrieve actual records from disk (NOT from memory!)
     auto disk_read_start = std::chrono::high_resolution_clock::now();
-    auto records = disk.getRecords(record_refs); // This uses disk.getRecord() internally
+    auto records = disk.getRecords(record_refs);
     auto disk_read_end = std::chrono::high_resolution_clock::now();
     auto disk_time = std::chrono::duration_cast<std::chrono::microseconds>(disk_read_end - disk_read_start).count();
 
     std::cout << "Disk retrieval time: " << disk_time << " microseconds" << std::endl;
 
-    // Calculate statistics
+    // Calculate statistics BEFORE deletion
     float total_ft_pct = 0.0f;
     int valid_records = 0;
 
@@ -288,6 +286,22 @@ void task3(const Disk &disk)
         }
     }
 
+    // Step 5: PERFORM ACTUAL DELETION
+    std::cout << "\nStep 5: Deleting records from disk and B+ tree index..." << std::endl;
+
+    auto deletion_start = std::chrono::high_resolution_clock::now();
+
+    // Delete from disk
+    int disk_deleted = disk.deleteRecords(record_refs);
+    std::cout << "Deleted " << disk_deleted << " records from disk" << std::endl;
+
+    // Delete from B+ tree index
+    int index_deleted = bplus_tree.deleteGreaterThan(0.9f);
+    std::cout << "Deleted " << index_deleted << " entries from B+ tree index" << std::endl;
+
+    auto deletion_end = std::chrono::high_resolution_clock::now();
+    auto deletion_time = std::chrono::duration_cast<std::chrono::milliseconds>(deletion_end - deletion_start).count();
+
     auto total_end = std::chrono::high_resolution_clock::now();
     auto total_time = std::chrono::duration_cast<std::chrono::milliseconds>(total_end - start).count();
 
@@ -298,6 +312,7 @@ void task3(const Disk &disk)
     std::cout << "Average FT_PCT_home of deleted records: " << (valid_records > 0 ? total_ft_pct / valid_records : 0.0f)
               << std::endl;
     std::cout << "Running time of retrieval process: " << total_time << " ms" << std::endl;
+    std::cout << "Running time of deletion process: " << deletion_time << " ms" << std::endl;
 
     // Compare with brute-force linear scan
     std::cout << "\n=== Brute-force Comparison ===" << std::endl;
@@ -306,7 +321,13 @@ void task3(const Disk &disk)
     std::cout << "Index speedup: ~" << (float)(disk.getTtlBlks() * 5) / std::max(1, (int)total_time) << "x faster"
               << std::endl;
 
-    std::cout << "\nNote: All records retrieved directly from disk blocks, not from memory!" << std::endl;
+    // Show updated B+ tree statistics
+    std::cout << "\n--- B+ Tree Statistics AFTER Deletion ---" << std::endl;
+    bplus_tree.printStatistics();
+
+    // Save updated B+ tree to disk
+    bplus_tree.saveToDisk();
+    std::cout << "\nUpdated B+ tree index saved to disk." << std::endl;
 }
 
 int main()
