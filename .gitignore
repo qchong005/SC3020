@@ -1,6 +1,7 @@
 /build
 .vscode/
 */bin
-*/data/data.db
-*/data/data.bin
+data/*.db
+data/*.bin
 main
+*.exe

@@ -39,6 +39,7 @@ void task2(const Disk &disk)
     auto duration = std::chrono::duration_cast<std::chrono::milliseconds>(end - start).count();
 
     std::cout << "B+ tree operation completed in " << duration << " ms" << std::endl;
+    std::cout << std::endl;
 
     // Print statistics
     bplus_tree.printStatistics();

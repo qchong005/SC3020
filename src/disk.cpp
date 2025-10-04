@@ -118,6 +118,7 @@ void Disk::printStats() const
     std::cout << "No. of Records in Last Block: "
               << (ttlRecs % MAX_RECORDS_PER_BLOCK == 0 ? MAX_RECORDS_PER_BLOCK : ttlRecs % MAX_RECORDS_PER_BLOCK)
               << '\n';
+    std::cout << std::endl;
 }
 
 int Disk::getTtlBlks() const
