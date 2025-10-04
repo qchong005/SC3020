@@ -113,6 +113,8 @@ void Disk::printStats() const
 {
     std::cout << "Size of Record: " << sizeof(Record) << " bytes" << std::endl;
     std::cout << "Total No. of Records: " << ttlRecs << '\n';
+    std::cout << "Max Records per Block: " << MAX_RECORDS_PER_BLOCK << '\n';
+    std::cout << "No. of Records in Last Block: " << (ttlRecs % MAX_RECORDS_PER_BLOCK == 0 ? MAX_RECORDS_PER_BLOCK : ttlRecs % MAX_RECORDS_PER_BLOCK) << '\n';
     std::cout << "Total No. of Blocks: " << ttlBlks << '\n';
 }
 
