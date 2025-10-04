@@ -1,13 +1,14 @@
 #pragma once
 
 #include "constants.h"
+#include <algorithm>
 #include <cstdint>
 #include <fstream>
 #include <memory>
 #include <unordered_map>
 #include <vector>
 
-// Record reference for indexing (points to location in main database)
+// Record reference for indexing
 struct RecordRef
 {
     std::uint32_t block_id;
@@ -20,13 +21,10 @@ struct RecordRef
     {
     }
 
-    // Comparison operators for sorting
     bool operator<(const RecordRef &other) const
     {
         if (block_id != other.block_id)
-        {
             return block_id < other.block_id;
-        }
         return record_offset < other.record_offset;
     }
 
@@ -36,75 +34,70 @@ struct RecordRef
     }
 };
 
-// B+ tree node types
-enum class NodeType
-{
-    INTERNAL,
-    LEAF
-};
-
 // B+ tree node structure
-struct BPlusTreeNode
+struct BPlusNode
 {
-    NodeType type;
-    std::uint32_t node_id;
-    std::uint16_t num_keys;
+    bool is_leaf;
     bool is_root;
-
-    // Keys array - FT_PCT_home values
+    std::uint32_t node_id;
     std::vector<float> keys;
 
-    // For internal nodes: pointers to child nodes
+    // For internal nodes: child pointers
     std::vector<std::uint32_t> children;
 
-    // For leaf nodes: record references and values for duplicate keys
+    // For leaf nodes: record references (handles duplicates)
     std::vector<std::vector<RecordRef>> values;
 
-    // For leaf nodes: pointer to next leaf (linked list)
+    // For leaf nodes: next leaf pointer
     std::uint32_t next_leaf;
 
-    BPlusTreeNode(NodeType t, std::uint32_t id) : type(t), node_id(id), num_keys(0), is_root(false), next_leaf(0)
+    // Parent tracking
+    std::uint32_t parent_id;
+
+    BPlusNode(bool leaf = false) : is_leaf(leaf), is_root(false), node_id(0), next_leaf(0), parent_id(0)
     {
     }
 };
 
-using NodePtr = std::shared_ptr<BPlusTreeNode>;
+using NodePtr = std::shared_ptr<BPlusNode>;
 
-// B+ tree class
 class BPlusTree
 {
   private:
     NodePtr root;
-    int n; // Parameter n (max keys per node)
-    std::string index_filename;
+    int n; // Maximum keys per node
     std::uint32_t next_node_id;
+    std::string index_filename;
+
+    // Node storage
+    std::unordered_map<std::uint32_t, NodePtr> nodes;
 
     // Statistics
     int total_nodes;
-    int tree_levels;
-
-    // Node storage for in-memory B+ tree
-    std::unordered_map<std::uint32_t, NodePtr> nodes;
+    int tree_height;
 
     // Helper functions
-    NodePtr createNode(NodeType type);
+    NodePtr createNode(bool is_leaf);
     NodePtr findLeafNode(float key);
-    void insertIntoLeaf(NodePtr leaf, float key, const RecordRef &record_ref);
-    void insertIntoParent(NodePtr left, float key, NodePtr right);
-    NodePtr splitLeafNode(NodePtr leaf);
-    NodePtr splitInternalNode(NodePtr node, int child_index);
+    NodePtr findParent(NodePtr child);
 
-    // Tree statistics calculation
-    void calculateStatistics();
-    int calculateLevels(NodePtr node, int current_level = 1);
+    void insertIntoLeaf(NodePtr leaf, float key, const RecordRef &record_ref);
+    void insertIntoInternal(NodePtr internal, float key, std::uint32_t child_id);
+
+    std::pair<NodePtr, float> splitLeafNode(NodePtr leaf);
+    std::pair<NodePtr, float> splitInternalNode(NodePtr internal);
+
+    void insertIntoParent(NodePtr left, float key, NodePtr right);
+    void updateStatistics();
+    int calculateHeight(NodePtr node);
     void countNodes(NodePtr node, int &count);
 
-    // Disk I/O helpers
+    // Disk I/O
     void saveNodeToDisk(std::ofstream &file, NodePtr node);
-    void loadNodeFromDisk(std::ifstream &file, uint32_t node_id);
+    NodePtr loadNodeFromDisk(std::ifstream &file);
 
   public:
-    BPlusTree(int order = 4, const std::string &filename = "bplus_tree.idx");
+    BPlusTree(int max_keys = 100, const std::string &filename = "bplus_tree.idx");
     ~BPlusTree() = default;
 
     // Core operations
@@ -112,7 +105,18 @@ class BPlusTree
     void bulkLoad(std::vector<std::pair<float, RecordRef>> &data);
     std::vector<RecordRef> search(float key);
 
-    // Statistics accessors
+    // Range search operations for Task 3
+    std::vector<RecordRef> searchRange(float min_key, float max_key);
+    std::vector<RecordRef> searchGreaterThan(float key);
+
+    // Search with statistics tracking
+    std::pair<std::vector<RecordRef>, int> searchGreaterThanWithStats(float key);
+
+    // Delete operations
+    bool deleteKey(float key, const RecordRef &record_ref);
+    int deleteGreaterThan(float key); // Returns number of records deleted
+
+    // Statistics
     int getParameterN() const
     {
         return n;
@@ -123,14 +127,13 @@ class BPlusTree
     }
     int getTreeLevels() const
     {
-        return tree_levels;
+        return tree_height;
     }
     std::vector<float> getRootKeys() const;
+
+    void printStatistics();
 
     // Disk operations
     void saveToDisk();
     void loadFromDisk();
-
-    // Utility
-    void printStatistics();
 };

@@ -36,5 +36,11 @@ class Disk
     // Method to retrieve multiple records using RecordRefs
     std::vector<Record> getRecords(const std::vector<RecordRef>& refs) const;
 
+    // Method to delete a record by marking it as deleted
+    bool deleteRecord(const RecordRef& ref);
+
+    // Method to delete multiple records
+    int deleteRecords(const std::vector<RecordRef>& refs);
+
     void printStats() const;
 };
