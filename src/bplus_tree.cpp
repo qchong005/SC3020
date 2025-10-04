@@ -680,54 +680,6 @@ void BPlusTree::printStatistics()
     std::cout << std::endl;
 }
 
-void BPlusTree::printTree()
-{
-    if (!root)
-    {
-        std::cout << "Empty tree" << std::endl;
-        return;
-    }
-
-    std::cout << "=== B+ Tree Structure ===" << std::endl;
-    std::queue<std::pair<NodePtr, int>> q;
-    q.push({root, 0});
-    int current_level = -1;
-
-    while (!q.empty())
-    {
-        auto [node, level] = q.front();
-        q.pop();
-
-        if (level != current_level)
-        {
-            current_level = level;
-            std::cout << "\nLevel " << level << ": ";
-        }
-
-        std::cout << "[";
-        for (size_t i = 0; i < node->keys.size(); i++)
-        {
-            if (i > 0)
-                std::cout << ", ";
-            std::cout << node->keys[i];
-        }
-        std::cout << "] ";
-
-        if (!node->is_leaf)
-        {
-            for (auto child_id : node->children)
-            {
-                auto child_it = nodes.find(child_id);
-                if (child_it != nodes.end())
-                {
-                    q.push({child_it->second, level + 1});
-                }
-            }
-        }
-    }
-    std::cout << std::endl;
-}
-
 void BPlusTree::saveToDisk()
 {
     updateStatistics();

@@ -114,6 +114,10 @@ void Disk::printStats() const
     std::cout << "Size of Record: " << sizeof(Record) << " bytes" << std::endl;
     std::cout << "Total No. of Records: " << ttlRecs << '\n';
     std::cout << "Total No. of Blocks: " << ttlBlks << '\n';
+    std::cout << "Maximum No. of Records per Block: " << MAX_RECORDS_PER_BLOCK << '\n';
+    std::cout << "No. of Records in Last Block: "
+              << (ttlRecs % MAX_RECORDS_PER_BLOCK == 0 ? MAX_RECORDS_PER_BLOCK : ttlRecs % MAX_RECORDS_PER_BLOCK)
+              << '\n';
 }
 
 int Disk::getTtlBlks() const
@@ -144,11 +148,12 @@ std::vector<std::pair<float, RecordRef>> Disk::getAllFTPctHomeValues() const
     return ft_pct_values;
 }
 
-Record Disk::getRecord(const RecordRef& ref) const
+Record Disk::getRecord(const RecordRef &ref) const
 {
     // Always read from disk file to simulate actual disk I/O
     std::ifstream dbFile(filename, std::ios::binary);
-    if (!dbFile.is_open()) {
+    if (!dbFile.is_open())
+    {
         std::cerr << "Cannot open database file: " << filename << '\n';
         return Record{}; // Return empty record on error
     }
@@ -160,29 +165,31 @@ Record Disk::getRecord(const RecordRef& ref) const
     // Seek to record position and read
     dbFile.seekg(record_position);
     Record record;
-    dbFile.read(reinterpret_cast<char*>(&record), RECORD_SIZE);
+    dbFile.read(reinterpret_cast<char *>(&record), RECORD_SIZE);
     dbFile.close();
 
     return record;
 }
 
-std::vector<Record> Disk::getRecords(const std::vector<RecordRef>& refs) const
+std::vector<Record> Disk::getRecords(const std::vector<RecordRef> &refs) const
 {
     std::vector<Record> result;
     result.reserve(refs.size());
 
-    for (const auto& ref : refs) {
+    for (const auto &ref : refs)
+    {
         result.push_back(getRecord(ref));
     }
 
     return result;
 }
 
-bool Disk::deleteRecord(const RecordRef& ref)
+bool Disk::deleteRecord(const RecordRef &ref)
 {
     // Open database file for writing
     std::fstream dbFile(filename, std::ios::in | std::ios::out | std::ios::binary);
-    if (!dbFile.is_open()) {
+    if (!dbFile.is_open())
+    {
         std::cerr << "Cannot open database file for deletion: " << filename << '\n';
         return false;
     }
@@ -194,18 +201,20 @@ bool Disk::deleteRecord(const RecordRef& ref)
     // Write zeros to mark as deleted
     Record empty_record{};
     dbFile.seekp(record_position);
-    dbFile.write(reinterpret_cast<const char*>(&empty_record), RECORD_SIZE);
+    dbFile.write(reinterpret_cast<const char *>(&empty_record), RECORD_SIZE);
     dbFile.close();
 
     return true;
 }
 
-int Disk::deleteRecords(const std::vector<RecordRef>& refs)
+int Disk::deleteRecords(const std::vector<RecordRef> &refs)
 {
     int deleted_count = 0;
 
-    for (const auto& ref : refs) {
-        if (deleteRecord(ref)) {
+    for (const auto &ref : refs)
+    {
+        if (deleteRecord(ref))
+        {
             deleted_count++;
         }
     }
